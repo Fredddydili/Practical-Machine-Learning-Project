@@ -1,0 +1,169 @@
+---
+title: "Practical Machine Learning Project"
+author: "Freddy Li"
+date: "July 13, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Environment Preparation
+library(ggplot2)
+library(caret)
+library(knitr)
+library(rattle)
+set.seed(10)
+```
+
+#### Overview
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+The data consists of a Training set,{r}[train](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv), for model building and a Testing set, {r}[test](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv), for prediction based on the built model.
+* More information is available from the website here: {r}[reference link](http://groupware.les.inf.puc-rio.br/har) 
+
+#### Data Loading and Cleaning
+## Environment Preparation
+Firstly, we load the R libraries and set seed that are necessary for the complete analysis.
+```{r library,cache=T}
+library(caret)
+library(knitr)
+library(rattle)
+set.seed(10)
+```
+
+## Data Loading
+Next, we load the data from 2 url for training and testing sets.
+```{r data, cache=T}
+url_Train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_Test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+if(!file.exists("Train.csv")) {download.file(url_Train, "Train.csv")}
+if(!file.exists("Test.csv")) {download.file(url_Test, "Test.csv")}
+
+Train <- read.csv("Train.csv")
+Test <- read.csv("Test.csv")
+```
+
+## Data Exploratory Analysis
+Then, we observe the data structure and content based on training set.
+```{r, cache=T}
+dim(Train);dim(Test)
+```
+```{r, cache=T}
+str(Train)
+```
+
+Based on the observations, we find there are 160 variables totally including identication information, related collected data and some variables including plenty of NA.
+
+## Data Cleaning
+To avoid noises from the data, we remove the variables without variance mostly, variables including plenty of NA and variables about identification information.
+```{r NZV, cache=T}
+# Remove the variables with nearly zero variance
+NZV <- nearZeroVar(Train)
+Train <- Train[,-NZV]
+Test <- Test[,-NZV]
+dim(Train);dim(Test) 
+```
+
+```{r ISNA, cache=T}
+# Remove the variables which are basically NA
+ISNA <- sapply(Train, function(x) mean(is.na(x)))>0.95 #95% 
+Train <- Train[,ISNA==FALSE]
+Test <- Test[,-ISNA==FALSE]
+dim(Train);dim(Test)
+```
+
+```{r iden, cache=T}
+# Remove the identification variables including index, names and timestamp (the first 5 columns)
+Train1 <- Train[,-(1:5)]
+Test1 <-Test[,-(1:5)]
+dim(Train1);dim(Test1)
+```
+Through the cleaning process, we remove 60 variables without variance basically, 41 variables with NA over 95% and 5 variables for identification information.Finally, we have 54 variables to fit models including the outcome variable, classes.
+
+#### Prediction Model Building
+To build model, we analyze the training data completely so initially we divide the training data into 2 subsets including a sub training set (70%) for model training and a sub testing model (30%) for validation.Then, we use 3 different algothms including classification trees, gradient boosting model and random forests to fit models and judge which model is the best one according to accuracy ratio. For all fitting models, we apply cross-validation with k=3.
+```{r subset, cache=T}
+# Create 2 subsets to validate model when building models.
+inTrain <-createDataPartition(y=Train1$classe,p=0.70,list=FALSE) # 70% for Training
+TrainSet <-Train1[inTrain,]
+TestSet <- Train1[-inTrain,] 
+```
+
+## Classification Tree
+
+```{r ctree, cache=T}
+# Classification Tree:
+modFit1 <-train(classe~.,data = TrainSet,method="rpart",trControl=trainControl(method = "cv",number=3))
+print(modFit1$finalModel)
+```
+
+```{r trees}
+fancyRpartPlot(modFit1$finalModel, main = "Classification Trees")
+```
+
+```{r pred&check,cache=T}
+# Prediction and Accuracy Checking
+Pred1 <- predict(modFit1,newdata = TestSet)
+Check1 <- confusionMatrix(Pred1,TestSet$classe)
+Check1$table
+```
+
+```{r, cache=T}
+Check1$overall[1]
+```
+We notice the accuracy is only 57.30% for classification trees model. Therefore, the outcome classe will not be predicted well by other predictors.
+
+## GBM (Gradient Boosting Model)
+```{r gbm, cache=T}
+# GBM (gradient boosted model)
+modFit2 <-train(classe~.,data = TrainSet,method="gbm",verbose=FALSE, trControl=trainControl(method = "cv",number=3))
+print(modFit2$finalModel)
+```
+
+```{r, cache=T}
+# Prediction and Accuracy Checking
+Pred2 <- predict(modFit2,newdata = TestSet)
+Check2 <- confusionMatrix(Pred2,TestSet$classe)
+Check2$table
+```
+
+```{r, cache=T}
+Check2$overall[1]
+```
+
+## Random Forests
+```{r rf, cache=T}
+# Random Forests
+modFit3 <-train(classe~.,data = TrainSet,method="rf",prox=T, trControl=trainControl(method = "cv",number=3))
+print(modFit3$finalModel)
+```
+
+```{r, cache=T}
+# Prediction and Accuracy Checking
+Pred3 <- predict(modFit3,newdata = TestSet)
+Check3 <- confusionMatrix(Pred3,TestSet$classe)
+Check3$table
+```
+
+```{r, cache=T}
+Check3$overall[1]
+```
+
+```{r, cache=T}
+#Plot
+plot(modFit3$finalModel, main="Model Error of Random Forest Model by Number of Trees")
+legend("topright", legend=unique(TrainSet$classe))
+```
+
+#### Application of Best Model for Prediction of 20 Test Sets
+The accuracy of 3 models are:
+  * Classification Trees: `r Check1$overall[1]`
+  * GBM: `r Check2$overall[1]`
+  * Random Forests: `r Check3$overall[1]`
+
+According, we decide to use Random Forests model to predict the results for testing dataset as following.
+```{r, cache=T}
+pred <- predict(modFit3,newdata = Test1)
+pred
+```
